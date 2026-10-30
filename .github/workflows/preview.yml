@@ -1,0 +1,48 @@
+# Plan morning-digest § 3–4. Saves /digest/2026-10-28 as one HTML file and deploys it to GitHub
+# Pages. The file is built here, never committed (ADR 0003). The marker comes from the
+# LANE_MARKER secret: delete the secret and run this again to take the marker off the same link.
+name: preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      night:
+        description: night to preview
+        default: '2026-10-28'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund --no-package-lock
+      - name: save the page
+        env:
+          LANE_MARKER: ${{ secrets.LANE_MARKER }}
+          NIGHT: ${{ inputs.night }}
+        run: |
+          npx tsx src/server.ts &
+          for i in $(seq 1 30); do curl -sf http://localhost:8787/health && break; sleep 1; done
+          mkdir -p site
+          curl -sf "http://localhost:8787/digest/$NIGHT" -o site/index.html
+          grep -c '<header>' site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
